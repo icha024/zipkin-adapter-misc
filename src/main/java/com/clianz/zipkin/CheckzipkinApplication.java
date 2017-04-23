@@ -1,5 +1,6 @@
 package com.clianz.zipkin;
 
+import com.clianz.zipkin.inmemory.LimitedInMemoryStorage;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -14,8 +15,8 @@ public class CheckzipkinApplication {
         SpringApplication.run(CheckzipkinApplication.class, args);
     }
 
-    @Bean
-    public StorageComponent storage() {
-        return new LimitedInMemoryStorage(false);
-    }
+//    @Bean
+//    public StorageComponent storage() {
+//        return new LimitedInMemoryStorage(false);
+//    }
 }

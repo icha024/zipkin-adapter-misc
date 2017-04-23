@@ -26,7 +26,8 @@ dependencies {
 	compile('io.zipkin.java:zipkin-server')
 	runtime('io.zipkin.java:zipkin-autoconfigure-ui')
 	compile('org.springframework.boot:spring-boot-starter-web')
-	testCompile('org.springframework.boot:spring-boot-starter-test')
+	compile('com.clianz:cloudant-spring-boot-starter:0.9.5')
+	testCompile('org.springframework.boot:spring-boot-starter-test:0.9.5')
 }
 
 dependencyManagement {

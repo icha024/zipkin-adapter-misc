@@ -1,4 +1,4 @@
-package com.clianz.zipkin;
+package com.clianz.zipkin.inmemory;
 
 import com.clianz.zipkin.fork.InMemorySpanStore;
 import zipkin.DependencyLink;

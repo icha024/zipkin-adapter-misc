@@ -1,6 +1,9 @@
 server:
   port: 9411
 
+cloudant:
+  url: http://localhost:5984
+
 spring:
   application:
     # This ends up as the service name in zipkin

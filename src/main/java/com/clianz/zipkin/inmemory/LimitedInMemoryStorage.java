@@ -1,4 +1,4 @@
-package com.clianz.zipkin;
+package com.clianz.zipkin.inmemory;
 
 import zipkin.storage.AsyncSpanConsumer;
 import zipkin.storage.AsyncSpanStore;
@@ -12,7 +12,7 @@ public final class LimitedInMemoryStorage implements StorageComponent {
     private final AsyncSpanStore asyncSpanStore;
     private final AsyncSpanConsumer asyncConsumer;
 
-    LimitedInMemoryStorage(boolean strictTraceId) {
+    public LimitedInMemoryStorage(boolean strictTraceId) {
         spanStore = new LimitedInMemorySpanStore(strictTraceId);
         asyncSpanStore = blockingToAsync(spanStore, Runnable::run);
         asyncConsumer = blockingToAsync(spanStore.spanConsumer, Runnable::run);

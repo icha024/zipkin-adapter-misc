@@ -1,0 +1,18 @@
+{
+   "_id": "_design/search",
+   "_rev": "14-b7ce9691ca3a3ff78d55b9495ee10127",
+   "views": {
+       "traceid-by-time-debug": {
+           "map": "function(doc){ emit(doc.timestamp, doc.traceid)}"
+       },
+       "traceid-by-time": {
+           "map": "function(doc){ emit([doc.traceId, doc.timestamp], null)}",
+           "reduce": "_count"
+       },
+       "span-by-traceid": {
+           "map": "function(doc){ emit(doc.traceId, doc)}"
+       }
+   }
+}
+
+http://localhost:5984/zipkin/_design/search/_view/traceid-by-time?group=true&group_level=1
