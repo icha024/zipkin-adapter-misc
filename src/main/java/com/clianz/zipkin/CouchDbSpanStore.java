@@ -3,6 +3,8 @@ package com.clianz.zipkin;
 import com.clianz.zipkin.inmemory.DbProvider;
 import com.cloudant.client.api.views.Key;
 import com.cloudant.client.api.views.ViewResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +32,8 @@ import static zipkin.internal.GroupByTraceId.TRACE_DESCENDING;
 public final class CouchDbSpanStore implements SpanStore {
 
     Logger log = LoggerFactory.getLogger(this.getClass());
+
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     DbProvider.CouchDbProvider dbProvider;
@@ -66,7 +70,16 @@ public final class CouchDbSpanStore implements SpanStore {
                     .limit(request.limit).build().getResponse();
             List<String> traceIds = searchByTime.getKeys().stream().map(complexKey -> {
                 String keyJsonStr = complexKey.toJson();
-                return keyJsonStr.substring(1, keyJsonStr.length() - 2);
+                String[] strArr = new String[0];
+                try {
+                    strArr = objectMapper.readValue(keyJsonStr, String[].class);
+                    if (strArr.length > 0) {
+                        return strArr[0];
+                    }
+                } catch (IOException e) {
+                    log.error("can not parse arr", e);
+                }
+                return "";
             }).collect(Collectors.toList());
             log.info("Got traceIds: {}", traceIds);
             List<Span> spans = dbProvider.getDb()
@@ -126,11 +139,42 @@ public final class CouchDbSpanStore implements SpanStore {
 
     @Override
     public List<String> getServiceNames() {
+        try {
+            List<String> serviceNames = dbProvider.getDb()
+                    .getViewRequestBuilder("search", "service-names")
+                    .newRequest(Key.Type.STRING, Object.class).group(true)
+                    .build().getResponse().getKeys();
+            log.info("Service name: {}", serviceNames);
+            return serviceNames;
+        } catch (IOException e) {
+            log.error("Error getServiceNames", e);
+        }
         return null;
     }
 
     @Override
     public List<String> getSpanNames(String serviceName) {
+        try {
+            List<String> spanNames = dbProvider.getDb()
+                    .getViewRequestBuilder("search", "service-span-names")
+                    .newRequest(Key.Type.COMPLEX, Object.class).group(true)
+                    .build().getResponse().getKeys().stream().map(complexKey -> {
+                        String ckJsonStr = complexKey.toJson();
+                        log.info("complexKey: {}", complexKey.toJson());
+                        try {
+                            String[] strArr = objectMapper.readValue(ckJsonStr, String[].class);
+                            return strArr;
+                        } catch (IOException e) {
+                            log.error("Error getSpanNames", e);
+                        }
+                        return new String[]{};
+                    }).filter(keyArr -> keyArr.length > 1 && keyArr[0].equals(serviceName))
+                    .map(str -> str[1]).collect(Collectors.toList());
+            log.info("Span name: {}", spanNames);
+            return spanNames;
+        } catch (IOException e) {
+            log.error("Error getSpanNames", e);
+        }
         return null;
     }
 
@@ -140,9 +184,19 @@ public final class CouchDbSpanStore implements SpanStore {
     }
 
     // DEBUG:
-    @GetMapping("/debugGetTraces")
+    @GetMapping("/getTraces")
     public String debugGetTraces() {
         getTraces(QueryRequest.builder().limit(100).build());
         return "pong";
+    }
+
+    @GetMapping("/getServiceNames")
+    public String debugGetServiceNames() {
+        return getServiceNames().toString();
+    }
+
+    @GetMapping("/getSpanNames")
+    public String debugGetSpanNames() {
+        return getSpanNames("testsleuthzipkin").toString();
     }
 }

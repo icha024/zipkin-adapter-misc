@@ -1,6 +1,6 @@
 {
    "_id": "_design/search",
-   "_rev": "14-b7ce9691ca3a3ff78d55b9495ee10127",
+   "_rev": "20-5e3034062a8cd6351c7a64ce5c338d44",
    "views": {
        "traceid-by-time-debug": {
            "map": "function(doc){ emit(doc.timestamp, doc.traceid)}"
@@ -11,6 +11,14 @@
        },
        "span-by-traceid": {
            "map": "function(doc){ emit(doc.traceId, doc)}"
+       },
+       "service-names": {
+           "map": "function(doc){ emit(doc.annotations[0].endpoint.serviceName, null)}",
+           "reduce": "_count"
+       },
+       "service-span-names": {
+           "map": "function(doc){ emit([doc.annotations[0].endpoint.serviceName, doc.name], null)}",
+           "reduce": "_count"
        }
    }
 }
