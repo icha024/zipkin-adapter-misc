@@ -1,4 +1,4 @@
-package com.clianz.zipkin;
+package com.clianz.zipkin.couchdb;
 
 import com.cloudant.client.api.CloudantClient;
 import com.cloudant.client.api.Database;
@@ -6,15 +6,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 @Component
-public class DbProvider {
+public class CouchDbProvider {
 
     @FunctionalInterface
-    public interface CouchDbProvider {
+    public interface DbInstanceProvider {
         Database getDb();
     }
 
     @Bean
-    public CouchDbProvider mydb(CloudantClient cloudant) {
+    public DbInstanceProvider mydb(CloudantClient cloudant) {
         // TODO: Rotate DB to cleanup.
         return () -> cloudant.database("zipkin", true);
     }

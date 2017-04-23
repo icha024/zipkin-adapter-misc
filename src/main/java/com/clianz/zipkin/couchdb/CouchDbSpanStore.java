@@ -1,12 +1,11 @@
-package com.clianz.zipkin;
+package com.clianz.zipkin.couchdb;
 
 import com.cloudant.client.api.views.Key;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.stereotype.Component;
 import zipkin.DependencyLink;
 import zipkin.Span;
 import zipkin.internal.CorrectForClockSkew;
@@ -21,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,18 +27,16 @@ import java.util.stream.Collectors;
 
 import static zipkin.internal.GroupByTraceId.TRACE_DESCENDING;
 
-//@Component
-@RestController
+@Component
 public final class CouchDbSpanStore implements SpanStore {
 
     private static final Logger log = LoggerFactory.getLogger(CouchDbSpanStore.class);
-
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
-    private DbProvider.CouchDbProvider dbProvider;
+    private CouchDbProvider.DbInstanceProvider dbProvider;
 
-    final StorageAdapters.SpanConsumer spanConsumer = new StorageAdapters.SpanConsumer() {
+    private final StorageAdapters.SpanConsumer spanConsumer = new StorageAdapters.SpanConsumer() {
         @Override
         public void accept(List<Span> spans) {
             dbProvider.getDb()
@@ -62,7 +58,7 @@ public final class CouchDbSpanStore implements SpanStore {
                     .newRequest(Key.Type.NUMBER, Long.class)
                     .startKey(request.endTs * 1000)
                     .descending(true)
-                    .limit(request.limit * 10) // FIXME: Best effort, hopefully got enough inside.
+                    .limit(request.limit * 10) // Best effort, hopefully got enough trace.
                     .build()
                     .getResponse()
                     .getValues();
@@ -73,19 +69,20 @@ public final class CouchDbSpanStore implements SpanStore {
             if (traceIdsArr.length > request.limit) {
                 traceIdsArr = Arrays.copyOf(traceIdsArr, request.limit);
             }
-            log.debug("Got traceIds: {}", traceIdsArr);
+            if (log.isDebugEnabled()) {
+                log.debug("Got traceIds: {}", Arrays.asList(traceIdsArr));
+            }
 
             List<Span> spans = dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
                     .newRequest(Key.Type.NUMBER, Span.class)
                     .keys(traceIdsArr)
-                    .reduce(false)
                     .build()
                     .getResponse()
                     .getValues();
 
             List<List<Span>> result = new ArrayList<>();
-            // FIXME: non-strict id match only
+            // non-strict id match only
             for (List<Span> next : GroupByTraceId.apply(spans, false, true)) {
                 if (request.test(next)) {
                     result.add(next);
@@ -181,13 +178,18 @@ public final class CouchDbSpanStore implements SpanStore {
         QueryRequest request = QueryRequest.builder()
                 .endTs(endTs)
                 .lookback(lookback)
-                .limit(100).build();
+                .limit(100)
+                .build();
 
         DependencyLinker linksBuilder = new DependencyLinker();
         for (Collection<Span> trace : getTraces(request)) {
             linksBuilder.putTrace(trace);
         }
         return linksBuilder.link();
+    }
+
+    protected StorageAdapters.SpanConsumer getSpanConsumer() {
+        return spanConsumer;
     }
 
     private <T> T[] complexKeyToArray(Key.ComplexKey ck, Class<T[]> valueType) {
@@ -198,33 +200,5 @@ public final class CouchDbSpanStore implements SpanStore {
             log.error("Can not parse JSON complex key", e);
             return (T[]) new Object[]{};
         }
-    }
-
-    // DEBUG:
-    @GetMapping("/getTraces")
-    public String debugGetTraces() {
-        List<List<Span>> traces = getTraces(QueryRequest.builder()
-                .limit(100)
-                .endTs(System.currentTimeMillis())
-                .build());
-        if (traces != null) {
-            return traces.toString();
-        }
-        return "pong";
-    }
-
-    @GetMapping("/getServiceNames")
-    public String debugGetServiceNames() {
-        return getServiceNames().toString();
-    }
-
-    @GetMapping("/getSpanNames")
-    public String debugGetSpanNames() {
-        return getSpanNames("testsleuthzipkin").toString();
-    }
-
-    @GetMapping("/getRawTrace")
-    public String debugGetRawTrace() {
-        return getRawTrace(0, -8131454385781382000L).toString();
     }
 }

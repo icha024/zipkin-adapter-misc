@@ -1,4 +1,4 @@
-package com.clianz.zipkin;
+package com.clianz.zipkin.couchdb;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -19,7 +19,7 @@ public final class CouchDbStorage implements StorageComponent {
     public CouchDbStorage(CouchDbSpanStore spanStore) {
         this.spanStore = spanStore;
         this.asyncSpanStore = blockingToAsync(spanStore, Runnable::run);
-        this.asyncConsumer = blockingToAsync(spanStore.spanConsumer, Runnable::run);
+        this.asyncConsumer = blockingToAsync(spanStore.getSpanConsumer(), Runnable::run);
     }
 
     @Override
