@@ -19,8 +19,12 @@ import zipkin.storage.StorageAdapters;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static zipkin.internal.GroupByTraceId.TRACE_DESCENDING;
@@ -51,31 +55,30 @@ public final class CouchDbSpanStore implements SpanStore {
 
     @Override
     public List<List<Span>> getTraces(QueryRequest request) {
+        log.debug("getTraces endTs: {}", request.endTs);
         try {
-            List<Key.ComplexKey> searchByTime = dbProvider.getDb()
+            List<Long> searchByTime = dbProvider.getDb()
                     .getViewRequestBuilder("search", "traceid-by-time")
-                    .newRequest(Key.Type.COMPLEX, Object.class)
-                    .groupLevel(1)
-                    .endKey(Key.complex(request.endTs * 1000))
+                    .newRequest(Key.Type.NUMBER, Long.class)
+                    .startKey(request.endTs * 1000)
                     .descending(true)
-                    .limit(request.limit)
+                    .limit(request.limit * 10) // FIXME: Best effort, hopefully got enough inside.
                     .build()
                     .getResponse()
-                    .getKeys();
+                    .getValues();
             log.debug("Got searchByTime: {}", searchByTime);
 
-            List<Long> traceIds = searchByTime.stream()
-                    .map(complexKey -> complexKeyToArray(complexKey, Long[].class))
-                    .filter(s -> s.length > 0)
-                    .map(strings -> strings[0])
-                    .collect(Collectors.toList());
-            log.debug("Got traceIds: {}", traceIds);
+            Set<Long> traceIdsSet = new LinkedHashSet<>(searchByTime);
+            Long[] traceIdsArr = traceIdsSet.toArray(new Long[traceIdsSet.size()]);
+            if (traceIdsArr.length > request.limit) {
+                traceIdsArr = Arrays.copyOf(traceIdsArr, request.limit);
+            }
+            log.debug("Got traceIds: {}", traceIdsArr);
 
             List<Span> spans = dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
                     .newRequest(Key.Type.NUMBER, Span.class)
-                    .keys(traceIds.toArray(new Long[traceIds.size()]))
-                    .descending(true)
+                    .keys(traceIdsArr)
                     .reduce(false)
                     .build()
                     .getResponse()
@@ -121,7 +124,6 @@ public final class CouchDbSpanStore implements SpanStore {
             return dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
                     .newRequest(Key.Type.NUMBER, Span.class)
-                    .descending(false)
                     .keys(new Long[]{traceId})
                     .build()
                     .getResponse()
