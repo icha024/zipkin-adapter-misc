@@ -4,6 +4,10 @@ server:
 cloudant:
   url: http://localhost:5984
 
+logging:
+  level:
+    com.clianz.zipkin: DEBUG
+
 spring:
   application:
     # This ends up as the service name in zipkin

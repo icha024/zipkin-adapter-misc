@@ -2,8 +2,6 @@ package com.clianz.zipkin;
 
 import com.clianz.zipkin.inmemory.DbProvider;
 import com.cloudant.client.api.views.Key;
-import com.cloudant.client.api.views.ViewResponse;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +18,7 @@ import zipkin.storage.SpanStore;
 import zipkin.storage.StorageAdapters;
 
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,17 +28,18 @@ import static zipkin.internal.GroupByTraceId.TRACE_DESCENDING;
 @RestController
 public final class CouchDbSpanStore implements SpanStore {
 
-    Logger log = LoggerFactory.getLogger(this.getClass());
+    private static final Logger log = LoggerFactory.getLogger(CouchDbSpanStore.class);
 
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
-    DbProvider.CouchDbProvider dbProvider;
+    private DbProvider.CouchDbProvider dbProvider;
 
     final StorageAdapters.SpanConsumer spanConsumer = new StorageAdapters.SpanConsumer() {
         @Override
         public void accept(List<Span> spans) {
-            dbProvider.getDb().bulk(spans);
+            dbProvider.getDb()
+                    .bulk(spans);
         }
 
         @Override
@@ -54,36 +51,34 @@ public final class CouchDbSpanStore implements SpanStore {
     @Override
     public List<List<Span>> getTraces(QueryRequest request) {
         try {
-            ViewResponse<Key.ComplexKey, Object> searchByTime = dbProvider.getDb()
+            List<Key.ComplexKey> searchByTime = dbProvider.getDb()
                     .getViewRequestBuilder("search", "traceid-by-time")
-                    .newRequest(Key.Type.COMPLEX, Object.class).groupLevel(1)
-                    .endKey(Key.complex("{}").add(request.endTs * 1000)).descending(true)
-                    .limit(request.limit).build().getResponse();
-            List<String> traceIds = searchByTime.getKeys().stream().map(complexKey -> {
-                return complexKeyToArray(complexKey, String[].class);
-//                String[] strArr = complexKeyToArray(complexKey, String[].class);
-//                if (strArr.length > 0) {
-//                    return strArr[0];
-//                }
-//                return "";
-//                try {
-//                    String keyJsonStr = complexKey.toJson();
-//                    String[] strArr = objectMapper.readValue(keyJsonStr, String[].class);
-//                    if (strArr.length > 0) {
-//                        return strArr[0];
-//                    }
-//                } catch (IOException e) {
-//                    log.error("can not parse arr", e);
-//                }
-//                return "";
-            })
+                    .newRequest(Key.Type.COMPLEX, Object.class)
+                    .groupLevel(1)
+                    .endKey(Key.complex(request.endTs * 1000))
+                    .descending(true)
+                    .limit(request.limit)
+                    .build()
+                    .getResponse()
+                    .getKeys();
+            log.debug("Got searchByTime: {}", searchByTime);
+
+            List<Long> traceIds = searchByTime.stream()
+                    .map(complexKey -> complexKeyToArray(complexKey, Long[].class))
                     .filter(s -> s.length > 0)
-                    .map(strings -> strings[0]).collect(Collectors.toList());
-            log.info("Got traceIds: {}", traceIds);
+                    .map(strings -> strings[0])
+                    .collect(Collectors.toList());
+            log.debug("Got traceIds: {}", traceIds);
+
             List<Span> spans = dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
-                    .newRequest(Key.Type.STRING, Span.class).descending(true).reduce(false)
-                    .build().getResponse().getValues();
+                    .newRequest(Key.Type.NUMBER, Span.class)
+                    .keys(traceIds.toArray(new Long[traceIds.size()]))
+                    .descending(true)
+                    .reduce(false)
+                    .build()
+                    .getResponse()
+                    .getValues();
 
             List<List<Span>> result = new ArrayList<>();
             // FIXME: non-strict id match only
@@ -93,7 +88,7 @@ public final class CouchDbSpanStore implements SpanStore {
                 }
             }
             result.sort(TRACE_DESCENDING);
-            log.info("getTraces result: {}", result);
+            log.debug("getTraces result: {}", result);
             return result;
         } catch (IOException e) {
             log.error("Error getting traces", e);
@@ -123,9 +118,12 @@ public final class CouchDbSpanStore implements SpanStore {
         try {
             return dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
-                    .newRequest(Key.Type.NUMBER, Span.class).descending(false)
+                    .newRequest(Key.Type.NUMBER, Span.class)
+                    .descending(false)
                     .keys(new Long[]{traceId})
-                    .build().getResponse().getValues();
+                    .build()
+                    .getResponse()
+                    .getValues();
         } catch (IOException e) {
             log.error("Error getting trace", e);
         }
@@ -137,9 +135,12 @@ public final class CouchDbSpanStore implements SpanStore {
         try {
             List<String> serviceNames = dbProvider.getDb()
                     .getViewRequestBuilder("search", "service-names")
-                    .newRequest(Key.Type.STRING, Object.class).group(true)
-                    .build().getResponse().getKeys();
-            log.info("Service name: {}", serviceNames);
+                    .newRequest(Key.Type.STRING, Object.class)
+                    .group(true)
+                    .build()
+                    .getResponse()
+                    .getKeys();
+            log.debug("Service name: {}", serviceNames);
             return serviceNames;
         } catch (IOException e) {
             log.error("Error getServiceNames", e);
@@ -152,22 +153,17 @@ public final class CouchDbSpanStore implements SpanStore {
         try {
             List<String> spanNames = dbProvider.getDb()
                     .getViewRequestBuilder("search", "service-span-names")
-                    .newRequest(Key.Type.COMPLEX, Object.class).group(true)
-                    .build().getResponse().getKeys().stream().map(complexKey -> {
-                        return complexKeyToArray(complexKey, String[].class);
-
-//                        String ckJsonStr = complexKey.toJson();
-//                        log.info("complexKey: {}", complexKey.toJson());
-//                        try {
-//                            String[] strArr = objectMapper.readValue(ckJsonStr, String[].class);
-//                            return strArr;
-//                        } catch (IOException e) {
-//                            log.error("Error getSpanNames", e);
-//                        }
-//                        return new String[]{};
-                    }).filter(keyArr -> keyArr.length > 1 && keyArr[0].equals(serviceName))
-                    .map(str -> str[1]).collect(Collectors.toList());
-            log.info("Span name: {}", spanNames);
+                    .newRequest(Key.Type.COMPLEX, Object.class)
+                    .group(true)
+                    .build()
+                    .getResponse()
+                    .getKeys()
+                    .stream()
+                    .map(complexKey -> complexKeyToArray(complexKey, String[].class))
+                    .filter(keyArr -> keyArr.length > 1 && keyArr[0].equals(serviceName))
+                    .map(str -> str[1])
+                    .collect(Collectors.toList());
+            log.debug("Span name: {}", spanNames);
             return spanNames;
         } catch (IOException e) {
             log.error("Error getSpanNames", e);
@@ -195,7 +191,10 @@ public final class CouchDbSpanStore implements SpanStore {
     // DEBUG:
     @GetMapping("/getTraces")
     public String debugGetTraces() {
-        List<List<Span>> traces = getTraces(QueryRequest.builder().limit(100).endTs(System.currentTimeMillis()).build());
+        List<List<Span>> traces = getTraces(QueryRequest.builder()
+                .limit(100)
+                .endTs(System.currentTimeMillis())
+                .build());
         if (traces != null) {
             return traces.toString();
         }
