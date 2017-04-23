@@ -1,4 +1,4 @@
-package com.clianz.zipkin.inmemory;
+package com.clianz.zipkin;
 
 import com.cloudant.client.api.CloudantClient;
 import com.cloudant.client.api.Database;

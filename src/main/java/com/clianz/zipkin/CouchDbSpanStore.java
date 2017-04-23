@@ -1,6 +1,5 @@
 package com.clianz.zipkin;
 
-import com.clianz.zipkin.inmemory.DbProvider;
 import com.cloudant.client.api.views.Key;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -11,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import zipkin.DependencyLink;
 import zipkin.Span;
 import zipkin.internal.CorrectForClockSkew;
+import zipkin.internal.DependencyLinker;
 import zipkin.internal.GroupByTraceId;
 import zipkin.internal.MergeById;
 import zipkin.storage.QueryRequest;
@@ -19,6 +19,7 @@ import zipkin.storage.StorageAdapters;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -89,11 +90,12 @@ public final class CouchDbSpanStore implements SpanStore {
             }
             result.sort(TRACE_DESCENDING);
             log.debug("getTraces result: {}", result);
+
             return result;
         } catch (IOException e) {
             log.error("Error getting traces", e);
+            return new ArrayList<>();
         }
-        return null;
     }
 
     @Override
@@ -126,8 +128,8 @@ public final class CouchDbSpanStore implements SpanStore {
                     .getValues();
         } catch (IOException e) {
             log.error("Error getting trace", e);
+            return null;
         }
-        return null;
     }
 
     @Override
@@ -144,8 +146,8 @@ public final class CouchDbSpanStore implements SpanStore {
             return serviceNames;
         } catch (IOException e) {
             log.error("Error getServiceNames", e);
+            return new ArrayList<>();
         }
-        return null;
     }
 
     @Override
@@ -167,14 +169,23 @@ public final class CouchDbSpanStore implements SpanStore {
             return spanNames;
         } catch (IOException e) {
             log.error("Error getSpanNames", e);
+            return new ArrayList<>();
         }
-        return null;
     }
 
     @Override
     public List<DependencyLink> getDependencies(long endTs, Long lookback) {
-        log.warn("getDependencies not implemented");
-        return null;
+        log.debug("getDependencies endTs: {}, loopback", endTs, lookback);
+        QueryRequest request = QueryRequest.builder()
+                .endTs(endTs)
+                .lookback(lookback)
+                .limit(100).build();
+
+        DependencyLinker linksBuilder = new DependencyLinker();
+        for (Collection<Span> trace : getTraces(request)) {
+            linksBuilder.putTrace(trace);
+        }
+        return linksBuilder.link();
     }
 
     private <T> T[] complexKeyToArray(Key.ComplexKey ck, Class<T[]> valueType) {
@@ -183,10 +194,9 @@ public final class CouchDbSpanStore implements SpanStore {
             return objectMapper.readValue(keyJsonStr, valueType);
         } catch (IOException e) {
             log.error("Can not parse JSON complex key", e);
+            return (T[]) new Object[]{};
         }
-        return (T[]) new Object[]{};
     }
-
 
     // DEBUG:
     @GetMapping("/getTraces")
