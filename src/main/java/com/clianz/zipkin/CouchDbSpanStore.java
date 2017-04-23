@@ -122,18 +122,16 @@ public final class CouchDbSpanStore implements SpanStore {
 
     @Override
     public List<Span> getRawTrace(long traceIdHigh, long traceId) {
-//        List<Span> spans = (List<Span>) traceIdToSpans.get(traceId);
-//        if (spans == null || spans.isEmpty()) return null;
-//        if (!strictTraceId) return sortedList(spans);
-//
-//        List<Span> filtered = new ArrayList<>(spans);
-//        Iterator<Span> iterator = filtered.iterator();
-//        while (iterator.hasNext()) {
-//            if (iterator.next().traceIdHigh != traceIdHigh) {
-//                iterator.remove();
-//            }
-//        }
-//        return filtered.isEmpty() ? null : filtered;
+        try {
+            return dbProvider.getDb()
+                    .getViewRequestBuilder("search", "span-by-traceid")
+                    .newRequest(Key.Type.NUMBER, Span.class).descending(false)
+                    .keys(new Long[]{traceId})
+                    .build().getResponse().getValues();
+        } catch (IOException e) {
+            log.error("Error getting trace", e);
+        }
+
         return null;
     }
 
@@ -180,6 +178,7 @@ public final class CouchDbSpanStore implements SpanStore {
 
     @Override
     public List<DependencyLink> getDependencies(long endTs, Long lookback) {
+        log.warn("getDependencies not implemented");
         return null;
     }
 
@@ -198,5 +197,10 @@ public final class CouchDbSpanStore implements SpanStore {
     @GetMapping("/getSpanNames")
     public String debugGetSpanNames() {
         return getSpanNames("testsleuthzipkin").toString();
+    }
+
+    @GetMapping("/getRawTrace")
+    public String debugGetRawTrace() {
+        return getRawTrace(0, -8131454385781382000L).toString();
     }
 }
