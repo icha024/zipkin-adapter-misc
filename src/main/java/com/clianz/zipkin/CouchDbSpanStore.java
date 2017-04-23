@@ -20,6 +20,7 @@ import zipkin.storage.SpanStore;
 import zipkin.storage.StorageAdapters;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -42,16 +43,6 @@ public final class CouchDbSpanStore implements SpanStore {
         @Override
         public void accept(List<Span> spans) {
             dbProvider.getDb().bulk(spans);
-
-//            synchronized (LimitedInMemorySpanStore.this) {
-//                InMemorySpanStore activeInst = memStores.get(currentStorageIdx);
-//                activeInst.spanConsumer.accept(spans);
-//                if (activeInst.acceptedSpanCount > maxStoragePerInst) {
-//                    currentStorageIdx = nextStorageIdx();
-//                    memStores.get(currentStorageIdx).clear();
-//                    // System.out.println("CLEARING NEXT DATA STORE");
-//                }
-//            }
         }
 
         @Override
@@ -66,21 +57,28 @@ public final class CouchDbSpanStore implements SpanStore {
             ViewResponse<Key.ComplexKey, Object> searchByTime = dbProvider.getDb()
                     .getViewRequestBuilder("search", "traceid-by-time")
                     .newRequest(Key.Type.COMPLEX, Object.class).groupLevel(1)
-//                    .startKey(new Key.complex())
+                    .endKey(Key.complex("{}").add(request.endTs * 1000)).descending(true)
                     .limit(request.limit).build().getResponse();
             List<String> traceIds = searchByTime.getKeys().stream().map(complexKey -> {
-                String keyJsonStr = complexKey.toJson();
-                String[] strArr = new String[0];
-                try {
-                    strArr = objectMapper.readValue(keyJsonStr, String[].class);
-                    if (strArr.length > 0) {
-                        return strArr[0];
-                    }
-                } catch (IOException e) {
-                    log.error("can not parse arr", e);
-                }
-                return "";
-            }).collect(Collectors.toList());
+                return complexKeyToArray(complexKey, String[].class);
+//                String[] strArr = complexKeyToArray(complexKey, String[].class);
+//                if (strArr.length > 0) {
+//                    return strArr[0];
+//                }
+//                return "";
+//                try {
+//                    String keyJsonStr = complexKey.toJson();
+//                    String[] strArr = objectMapper.readValue(keyJsonStr, String[].class);
+//                    if (strArr.length > 0) {
+//                        return strArr[0];
+//                    }
+//                } catch (IOException e) {
+//                    log.error("can not parse arr", e);
+//                }
+//                return "";
+            })
+                    .filter(s -> s.length > 0)
+                    .map(strings -> strings[0]).collect(Collectors.toList());
             log.info("Got traceIds: {}", traceIds);
             List<Span> spans = dbProvider.getDb()
                     .getViewRequestBuilder("search", "span-by-traceid")
@@ -131,7 +129,6 @@ public final class CouchDbSpanStore implements SpanStore {
         } catch (IOException e) {
             log.error("Error getting trace", e);
         }
-
         return null;
     }
 
@@ -157,15 +154,17 @@ public final class CouchDbSpanStore implements SpanStore {
                     .getViewRequestBuilder("search", "service-span-names")
                     .newRequest(Key.Type.COMPLEX, Object.class).group(true)
                     .build().getResponse().getKeys().stream().map(complexKey -> {
-                        String ckJsonStr = complexKey.toJson();
-                        log.info("complexKey: {}", complexKey.toJson());
-                        try {
-                            String[] strArr = objectMapper.readValue(ckJsonStr, String[].class);
-                            return strArr;
-                        } catch (IOException e) {
-                            log.error("Error getSpanNames", e);
-                        }
-                        return new String[]{};
+                        return complexKeyToArray(complexKey, String[].class);
+
+//                        String ckJsonStr = complexKey.toJson();
+//                        log.info("complexKey: {}", complexKey.toJson());
+//                        try {
+//                            String[] strArr = objectMapper.readValue(ckJsonStr, String[].class);
+//                            return strArr;
+//                        } catch (IOException e) {
+//                            log.error("Error getSpanNames", e);
+//                        }
+//                        return new String[]{};
                     }).filter(keyArr -> keyArr.length > 1 && keyArr[0].equals(serviceName))
                     .map(str -> str[1]).collect(Collectors.toList());
             log.info("Span name: {}", spanNames);
@@ -182,10 +181,24 @@ public final class CouchDbSpanStore implements SpanStore {
         return null;
     }
 
+    private <T> T[] complexKeyToArray(Key.ComplexKey ck, Class<T[]> valueType) {
+        try {
+            String keyJsonStr = ck.toJson();
+            return objectMapper.readValue(keyJsonStr, valueType);
+        } catch (IOException e) {
+            log.error("Can not parse JSON complex key", e);
+        }
+        return (T[]) new Object[]{};
+    }
+
+
     // DEBUG:
     @GetMapping("/getTraces")
     public String debugGetTraces() {
-        getTraces(QueryRequest.builder().limit(100).build());
+        List<List<Span>> traces = getTraces(QueryRequest.builder().limit(100).endTs(System.currentTimeMillis()).build());
+        if (traces != null) {
+            return traces.toString();
+        }
         return "pong";
     }
 

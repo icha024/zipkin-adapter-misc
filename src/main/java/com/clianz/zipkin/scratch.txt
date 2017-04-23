@@ -1,6 +1,6 @@
 {
    "_id": "_design/search",
-   "_rev": "20-5e3034062a8cd6351c7a64ce5c338d44",
+   "_rev": "23-f54edf413cd17a6d0db7920e31438e5e",
    "views": {
        "traceid-by-time-debug": {
            "map": "function(doc){ emit(doc.timestamp, doc.traceid)}"
@@ -19,6 +19,9 @@
        "service-span-names": {
            "map": "function(doc){ emit([doc.annotations[0].endpoint.serviceName, doc.name], null)}",
            "reduce": "_count"
+       },
+       "trace": {
+           "map": "function(doc){ emit(doc.traceId, doc)}"
        }
    }
 }
