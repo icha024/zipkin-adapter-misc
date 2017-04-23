@@ -32,9 +32,12 @@ public final class CouchDbSpanStore implements SpanStore {
 
     private static final Logger log = LoggerFactory.getLogger(CouchDbSpanStore.class);
     private ObjectMapper objectMapper = new ObjectMapper();
+    private CouchDbProvider.DbInstanceProvider dbProvider;
 
     @Autowired
-    private CouchDbProvider.DbInstanceProvider dbProvider;
+    public CouchDbSpanStore(CouchDbProvider.DbInstanceProvider dbProvider) {
+        this.dbProvider = dbProvider;
+    }
 
     private final StorageAdapters.SpanConsumer spanConsumer = new StorageAdapters.SpanConsumer() {
         @Override
